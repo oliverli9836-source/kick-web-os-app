@@ -117,6 +117,8 @@ if (typeof document !== 'undefined') (function () {
         (videoButtons[0] || el('catalog-back')).focus();
     }, 0);
   }
+  var danmakuEnabled = true;
+  var danmaku = KickDanmaku(el('danmaku'), { text: appendSymbolText });
   var player = KickPlayer(el('video-host'), { status: mediaStatus, change: function (next) {
     var transition = playback.phase !== next.phase || playback.paused !== next.paused, durationChanged = playback.duration !== next.duration;
     playback = next;
@@ -494,7 +496,19 @@ if (typeof document !== 'undefined') (function () {
     request = null;
     if (previous) { try { previous.cancel(); } catch (e) { /* A closed bridge is already cancelled. */ } }
   }
+  function danmakuLabel() {
+    el('danmaku-toggle').textContent = t(danmakuEnabled ? 'danmaku_on' : 'danmaku_off');
+    el('danmaku-toggle').setAttribute('aria-pressed', danmakuEnabled ? 'true' : 'false');
+  }
+  // Chat overlay runs only for a visible live session whose channel exposes a public chat room.
+  function syncDanmaku() {
+    var live = !!(current && current.isLive && current.chatroomId);
+    el('danmaku-toggle').hidden = !live;
+    if (live && danmakuEnabled && screen === 'watch' && !document.hidden) danmaku.start(current.chatroomId, { key: current.chatKey, cluster: current.chatCluster });
+    else danmaku.stop();
+  }
   function unload() {
+    danmaku.stop();
     saveWatched();
     clearTimeout(controlsTimer);
     preparing = false;
@@ -712,8 +726,10 @@ if (typeof document !== 'undefined') (function () {
     return new RegExp('[#*0-9]\\uFE0F?\\u20E3|(?:\\uD83C[\\uDDE6-\\uDDFF]){2}|' + part + '(?:\\u200D' + part + ')*', 'g');
   }());
   function setVideoTitle(node, value) {
-    var text = titleSlice(String(value || t('replay')));
     node.textContent = '';
+    appendSymbolText(node, titleSlice(String(value || t('replay'))));
+  }
+  function appendSymbolText(node, text) {
     var index = 0, match;
     symbols.lastIndex = 0;
     function append(value, className) {
@@ -832,6 +848,7 @@ if (typeof document !== 'undefined') (function () {
       if (!document.hidden) player.load(item.playback);
       else mediaStatus('playback_stopped');
     });
+    syncDanmaku();
     el('watch').focus();
   }
   function showCatalog() {
@@ -1072,6 +1089,10 @@ if (typeof document !== 'undefined') (function () {
   el('back').addEventListener('click', goHome);
   el('live').addEventListener('click', function () { if (catalog) startVideo(catalog.live); });
   el('watch-recordings').addEventListener('click', showCatalog);
+  el('danmaku-toggle').addEventListener('click', function () {
+    danmakuEnabled = !danmakuEnabled; danmakuLabel(); syncDanmaku(); showControls();
+    try { localStorage.setItem('kick-danmaku', danmakuEnabled ? 'on' : 'off'); } catch (e) { /* Session preference remains usable. */ }
+  });
   el('toggle').addEventListener('click', toggle);
   el('reconnect').addEventListener('click', function () { if (!preparing && current) player.reconnect(false); showControls(); });
   el('seek').addEventListener('input', function () { scrubbing = true; updateTimeline(); showControls(); });
@@ -1093,16 +1114,17 @@ if (typeof document !== 'undefined') (function () {
       preparing = false;
       el('toggle').disabled = false;
       clearTimeout(controlsTimer);
+      danmaku.stop();
       if (current) player.suspend();
       else if (interrupted && screen === 'catalog') {
         el('channel-status').textContent = t('lookup_interrupted', { retry: t('retry') });
         el('catalog-retry').hidden = false;
       }
-    } else if (current) { showControls(); el('toggle').focus(); }
+    } else if (current) { syncDanmaku(); showControls(); el('toggle').focus(); }
     else if (screen === 'home') { renderContinue(); refreshRecentStatus(); }
     else if (screen === 'catalog') { fitCatalog(); (videoButtons[0] || el('catalog-back')).focus(); }
   });
-  window.addEventListener('pagehide', function () { cancelContinue(); closeAccessibility(false); closeJump(false); closeSearch(false, false); closeQuality(); closeFavoriteMove(false); closeResume(false); cancelRecentStatus(); cancelRequest(); player.suspend(); cancelHomeLayout(); cancelCatalogLayout(); });
+  window.addEventListener('pagehide', function () { cancelContinue(); closeAccessibility(false); closeJump(false); closeSearch(false, false); closeQuality(); closeFavoriteMove(false); closeResume(false); cancelRecentStatus(); cancelRequest(); danmaku.stop(); player.suspend(); cancelHomeLayout(); cancelCatalogLayout(); });
   window.addEventListener('resize', function () { fitHome(); fitCatalog(); });
   window.addEventListener('offline', function () { if (screen === 'watch') player.offline(); });
   window.addEventListener('online', function () { if (screen === 'watch' && !document.hidden) player.online(); if (screen === 'home' && !document.hidden) { renderContinue(); refreshRecentStatus(); } });
@@ -1216,7 +1238,7 @@ if (typeof document !== 'undefined') (function () {
       screen === 'catalog' ? [el('catalog-search')].concat(el('live').hidden ? [] : [el('live')], videoButtons,
         el('catalog-retry').hidden ? [] : [el('catalog-retry')],
         el('pages').hidden ? [] : [el('previous-page'), el('next-page')].filter(function (b) { return !b.disabled; }), [el('catalog-back'), el('catalog-favorite')]) :
-      screen === 'about' ? [el('check-updates'), el('about-back')] : (current && current.isLive ? [] : [el('seek'), el('jump-time')]).concat([el('toggle'), el('reconnect'), el('quality-button'), el('watch-recordings'), el('back')]);
+      screen === 'about' ? [el('check-updates'), el('about-back')] : (current && current.isLive ? [] : [el('seek'), el('jump-time')]).concat([el('toggle'), el('reconnect'), el('quality-button')], el('danmaku-toggle').hidden ? [] : [el('danmaku-toggle')], [el('watch-recordings'), el('back')]);
     controls = controls.filter(function (control) { return !control.disabled; });
     var index = controls.indexOf(event.target);
     if (screen === 'home' && (key === 37 || key === 39)) {
@@ -1323,6 +1345,8 @@ if (typeof document !== 'undefined') (function () {
   try { var rawRelease = localStorage.getItem('kick-release-cache') || ''; if (rawRelease.length <= 8192) { var savedRelease = JSON.parse(rawRelease); if (validRelease(savedRelease)) releaseCache = savedRelease; } } catch (e) { /* Ignore invalid update cache. */ }
   try { var savedRetry = localStorage.getItem('kick-update-retry-at'); if (/^[0-9]{1,13}$/.test(savedRetry) && +savedRetry > Date.now() && +savedRetry <= 4102444800000) updateRetryAt = +savedRetry; } catch (e) { /* Session-only backoff. */ }
   try { var rawAccessibility = localStorage.getItem('kick-accessibility') || ''; if (rawAccessibility.length <= 256) { var savedAccessibility = JSON.parse(rawAccessibility); if (savedAccessibility && (savedAccessibility.size === 'normal' || savedAccessibility.size === 'large') && typeof savedAccessibility.contrast === 'boolean') accessibility = { size: savedAccessibility.size, contrast: savedAccessibility.contrast }; } } catch (e) { /* Use readable defaults. */ }
+  try { danmakuEnabled = localStorage.getItem('kick-danmaku') !== 'off'; } catch (e) { /* Enabled by default. */ }
+  danmakuLabel(); el('danmaku-toggle').hidden = true;
   applyAccessibility(false);
   input.value = recents[0] || '';
   renderRecents(); renderFavorites();

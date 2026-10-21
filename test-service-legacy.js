@@ -69,7 +69,7 @@ function expectChannel(reply) {
   assert.strictEqual(reply.videosError, null);
 }
 function test() {
-  ['app/app.js', 'app/player.js', 'app/i18n.js'].forEach(function (path) {
+  ['app/app.js', 'app/player.js', 'app/danmaku.js', 'app/i18n.js'].forEach(function (path) {
     vm.createScript(fs.readFileSync(path, 'utf8'), { filename: path });
   });
   loadService();

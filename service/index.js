@@ -148,6 +148,39 @@ function getJSON(path, background) {
   });
 }
 
+// Kick hands out its chat socket credentials per channel; the last known public key covers a failed lookup.
+var chatFallback = { key: '34bf7a0ff419a2a775b9', cluster: 'us2' };
+function chatCredentials(channelId) {
+  return new Promise(function (resolve) {
+    var done = false, req, body = JSON.stringify({ client: { id: 'tv-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10), type: 'web' }, capabilities: { accepted_providers: [{ provider: 'pusher' }] } });
+    function finish(value) { if (done) return; done = true; clearTimeout(timer); if (req) req.abort(); resolve(value || chatFallback); }
+    var timer = setTimeout(function () { finish(null); }, 6000);
+    try {
+      req = https.request({ hostname: 'web.kick.com', path: '/api/v1/realtime/channels/' + channelId + '/chat/connection', method: 'POST', agent: agent,
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, function (res) {
+        var text = '';
+        if (res.statusCode !== 200) { finish(null); return; }
+        res.setEncoding('utf8');
+        res.on('data', function (chunk) { text += chunk; if (text.length > 16384) finish(null); });
+        res.on('end', function () {
+          var found = null;
+          try {
+            (JSON.parse(text).data.connections || []).some(function (option) {
+              var c = option && option.provider === 'pusher' && option.credentials;
+              if (c && /^[a-f0-9]{8,64}$/.test(c.app_key) && /^[a-z0-9]{2,8}$/.test(c.cluster)) found = { key: c.app_key, cluster: c.cluster };
+              return !!found;
+            });
+          } catch (e) { /* Fall back to the known key. */ }
+          finish(found);
+        });
+        res.on('error', function () { finish(null); });
+      });
+      req.on('error', function () { finish(null); });
+      req.end(body);
+    } catch (e) { finish(null); }
+  });
+}
+
 service.register('statuses', function (message) {
   var channels = message.payload && message.payload.channels;
   if (!Array.isArray(channels) || !channels.length || channels.length > 6 || channels.some(function (name, i) {
@@ -271,12 +304,20 @@ service.register('channel', function (message) {
     var videos = publicVideos(recordings);
     var videosError = Array.isArray(recordings) ? null :
       recordings && recordings.marker === failedVideos ? recordings.error : failure('videos_unavailable', 'The replay list is not available.');
-    respond(message, { returnValue: true, channel: slug,
-      live: live && live.is_live === true && source ? {
-        title: titleText(live.session_title, slug), url: source, isLive: true
-      } : null,
-      videos: videos,
-      videosError: videosError ? errorReply(videosError) : null });
+    // The public chat room feeds the optional danmaku overlay; zero means no chat for this session.
+    var chatroom = channel.chatroom && Number(channel.chatroom.id), id = Number(channel.id);
+    if (!(chatroom > 0 && chatroom <= 1e12 && chatroom % 1 === 0)) chatroom = 0;
+    var isLive = live && live.is_live === true && source;
+    var chat = isLive && chatroom && id > 0 && id <= 1e12 && id % 1 === 0 ? chatCredentials(id) : Promise.resolve(null);
+    return chat.then(function (realtime) {
+      respond(message, { returnValue: true, channel: slug,
+        live: isLive ? {
+          title: titleText(live.session_title, slug), url: source, isLive: true,
+          chatroomId: realtime ? chatroom : 0, chatKey: realtime ? realtime.key : '', chatCluster: realtime ? realtime.cluster : ''
+        } : null,
+        videos: videos,
+        videosError: videosError ? errorReply(videosError) : null });
+    });
   }).catch(function (e) {
     respond(message, errorReply(e));
   });

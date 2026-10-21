@@ -3,11 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' file:; style-src 'self' file:; font-src 'self' file:; img-src 'self' file: https://files.kick.com https://images.kick.com; media-src https://stream.kick.com https://*.live-video.net; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' file:; style-src 'self' file:; font-src 'self' file:; img-src 'self' file: https://files.kick.com https://images.kick.com; connect-src wss://*.pusher.com; media-src https://stream.kick.com https://*.live-video.net; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Stream for Kick</title>
   <link rel="stylesheet" href="style.css">
   <script src="i18n.js" defer></script>
   <script src="player.js" defer></script>
+  <script src="danmaku.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -88,6 +89,7 @@
   </section>
   <section id="watch" aria-label="Player" data-i18n-attr="aria-label:player_label" tabindex="-1" hidden>
     <div id="video-host"></div>
+    <div id="danmaku" aria-hidden="true"></div>
     <p id="playback-status" role="status" aria-live="polite" aria-atomic="true"></p>
     <div id="playback-controls">
       <p id="video-title"></p>
@@ -108,6 +110,7 @@
       <button id="toggle" type="button" data-i18n="pause">Pause</button>
       <button id="reconnect" type="button" data-i18n="reconnect">Reconnect</button>
       <button id="quality-button" type="button" data-i18n="quality_title">Playback quality</button>
+      <button id="danmaku-toggle" type="button" aria-pressed="true"></button>
       <button id="watch-recordings" type="button" data-i18n="channel_recordings">Channel replays</button>
     </div>
     <button id="back" type="button" data-i18n="change_channel">Change channel</button>

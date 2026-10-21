@@ -91,6 +91,7 @@ function boot(localStorage = storage, bridgeMode = 'ok', locale = 'cs-CZ', onlin
   vm.runInContext('Array.from = undefined;', context);
   vm.runInContext(fs.readFileSync('app/i18n.js','utf8'),context);
   vm.runInContext(fs.readFileSync('app/player.js','utf8'),context);
+  vm.runInContext(fs.readFileSync('app/danmaku.js','utf8'),context);
   vm.runInContext(fs.readFileSync('app/app.js','utf8'),context);
 }
 function advance(ms) {
