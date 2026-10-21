@@ -1,18 +1,21 @@
-# Kick TV app for LG webOS
+# Kick TV app for LG webOS — with danmaku chat
 
-[![CI](https://github.com/JirakJ/kick-web-os-app/actions/workflows/ci.yml/badge.svg)](https://github.com/JirakJ/kick-web-os-app/actions/workflows/ci.yml)
+> Fork of [JirakJ/kick-web-os-app](https://github.com/JirakJ/kick-web-os-app) that adds a **danmaku (scrolling chat) overlay** for live streams, ported from the [uKick](https://github.com/berkaygediz/uKick) browser extension.
 
-An unofficial, chat-free Kick TV app for LG webOS smart TVs. Choose a channel and watch live streams or public video-on-demand (VOD) replays through the TV's native video player. The app and its small JavaScript service run on the TV; no computer or external proxy needs to stay on.
+An unofficial Kick TV app for LG webOS smart TVs. Choose a channel and watch live streams or public video-on-demand (VOD) replays through the TV's native video player. During live streams, public chat can scroll across the video, danmaku style. The app and its small JavaScript service run on the TV; no computer or external proxy needs to stay on.
 
 The interface follows the TV's system language (Czech, Slovak, English, German, Polish, Spanish, Portuguese, French, Italian, Hungarian, Ukrainian, Russian and Turkish; other languages fall back to English) and uses Kick-inspired black and green styling.
 
-[Download the latest installable IPK](https://github.com/JirakJ/kick-web-os-app/releases/latest).
+[Download the latest installable IPK](https://github.com/oliverli9836-source/kick-web-os-app/releases/latest).
+
+**0.9.0 adds a danmaku chat overlay.** Live chat messages and Kick emotes fly across the top of the video, adapted from uKick for the TV's older browser engine. Turn it on or off with **Chat overlay** in the player controls; the choice is remembered. Replays have no live chat, so the overlay appears only on live streams.
 
 **0.8.2 fits home and replay browsing to the TV screen.** Three saved-channel panels and the replay grid adapt their page size to the available height, including larger text. The release workflow publishes the IPK, current TV screenshots and checksums only after every main-branch CI job succeeds. See the [device audit](docs/production-audit.md) for measured scope and remaining coverage limits.
 
 ## Features
 
 - Live streams and public replays, including a replay picker when a channel is offline.
+- Danmaku chat overlay on live streams: public chat messages and emotes scroll across the upper part of the video in non-overlapping lanes, with links removed and a bounded queue so busy chats stay readable. On by default; toggle with **Chat overlay** in the player controls.
 - Up to 50 independently ordered favorite channels, up to six per page depending on screen height and text size, with row hearts, remote-only move/save/cancel controls and visible LIVE/offline/unknown status.
 - Up to 50 recent channels stored locally, up to six per page depending on available space, with a **LIVE** badge for live channels and an individual remove button.
 - Interface language taken from the TV's locale, including the launcher title, with English as the fallback.
@@ -27,7 +30,7 @@ The interface follows the TV's system language (Czech, Slovak, English, German, 
 - Auto quality up to 4K: 2160p → 1440p → 1080p → lower resolutions. Native adaptation remains enabled for slower connections. The quality menu also offers validated self-contained HLS renditions; fixed quality preserves position/pause, while playlists with separate audio require Auto. Preferences are local; missing renditions fall back explicitly to Auto. Actual decoder resolution/FPS is unavailable through the supported app API.
 - Serialized seeking, bounded recovery after media errors, request timeouts and cleanup when leaving the player.
 
-No chat, account login, private videos or analytics.
+No chat sending, account login, private videos or analytics. Chat is read-only and only shown as the overlay.
 
 ## Screenshots
 
@@ -54,7 +57,7 @@ npm test
 npm run package
 ```
 
-The output is `dist/com.jakubjirak_0.8.2_all.ipk`. It contains both the app (`com.jakubjirak`) and its service (`com.jakubjirak.service`), which must be installed together. CI runs the tests and uploads the built IPK as a workflow artifact.
+The output is `dist/com.jakubjirak_0.9.0_all.ipk`. It contains both the app (`com.jakubjirak`) and its service (`com.jakubjirak.service`), which must be installed together. CI runs the tests and uploads the built IPK as a workflow artifact.
 
 Build dependencies pin security updates and two documented [local backports](vendor/security/README.md) for fixes that have no official release yet. `npm test` also checks the installed CLI dependencies against hostile brace patterns, proxy trust inputs and numeric precision values. These development dependencies are not shipped to the TV.
 
@@ -98,6 +101,7 @@ Button labels below are the English strings; the app shows them in the TV's lang
 | Jump to a position | Select a point on the seek bar with Magic Remote |
 | Return to the channel's recordings | **Back** from playback or **Channel replays** |
 | Choose another channel | **Change channel** |
+| Show/hide scrolling chat (live only) | **Chat overlay: On / Off** in the player controls |
 
 Controls remain visible while paused or when an error needs attention. Leaving the app releases the decoder. On return, choose **Resume** to resume from the previous replay position within the same app session.
 
@@ -141,12 +145,13 @@ This is not a guarantee of crash-free operation. Several-hour playback, router o
 ## Architecture and limits
 
 - `app/`: HTML/CSS, remote navigation, the native media controller and `i18n.js` with the interface strings for every supported language.
+- `app/danmaku.js`: the chat overlay — a read-only Pusher WebSocket client for Kick's public chat room and an ES5 renderer using CSS transitions (webOS 3's Chromium 38 lacks Web Animations).
 - `service/`: validated HTTPS requests for channel information, public replays and HLS quality metadata.
 - `test.cjs`: local regression and failure-path checks.
 - `test-player-resources.cjs`: retired-video collection with an unresolved play promise.
 - `test-service-resources.js`: real-socket origin and keep-alive resource limits.
 
-The service uses Kick's web endpoints (`/api/v2/channels/{channel}` and `/videos`), which are not a stable documented public API. Kick may change or restrict them. HTTP errors are shown in the app. Only allowlisted Kick media and thumbnail hosts are accepted, TLS validation remains enabled, and remote titles render as text.
+The service uses Kick's web endpoints (`/api/v2/channels/{channel}` and `/videos`), which are not a stable documented public API. For live channels it also asks `web.kick.com/api/v1/realtime/channels/{id}/chat/connection` for the current public chat socket key, falling back to the last known key; the app connects only to `wss://*.pusher.com`, which the page's Content-Security-Policy allows. Kick may change or restrict them. HTTP errors are shown in the app. Only allowlisted Kick media and thumbnail hosts are accepted, TLS validation remains enabled, and remote titles render as text.
 
 Requests are limited to 1 MiB of decoded text, 12 seconds and six concurrent connections; gzip responses are inflated incrementally and stopped at the same limit. Playback recovery makes at most two attempts before asking the viewer to retry. These controls bound resource use and recovery; they cannot fix a platform outage or an unsupported TV decoder.
 
